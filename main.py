@@ -241,7 +241,7 @@ def generate_pdf_file(inv_no, items, data_dict=None):
     return buf
 
 # ================= 4. MAIN UI =================
-st.title("🚚 ใบกำกับขนส่ง JP PARTNER")
+st.title("🚚 ใบกำกับขนส่ง JP PARTNER HEAD OFFICE")
 
 with st.expander("🔍 ค้นหา/แก้ไข/พิมพ์บิลเก่า"):
     if not inv_df.empty:
