@@ -82,18 +82,14 @@ def reset_form_action():
     st.session_state.form_date = datetime.now().strftime("%d/%m/%Y")
     for f in transport_fields: st.session_state[f"in_{f}"] = ""
 
-# ================= 3. PDF GENERATOR =================
+# ================= 3. PDF GENERATOR (REVISED TO 1 PAGE) =================
 def generate_pdf_file(inv_no, items, data_dict=None):
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     w, h = A4
     
-    page_labels = [
-        "แผ่นที่ 1 - ต้นฉบับ - ผู้รับน้ำมัน (ปลายทาง)", 
-        "แผ่นที่ 2 - สำเนา - พนักงานขับรถ / ผู้ขนส่ง", 
-        "แผ่นที่ 3 - สำเนา - ฝ่ายบัญชี / ส่วนกลางผู้ส่ง", 
-        "แผ่นที่ 4 - สำเนา - คลังน้ำมัน (ต้นทาง)"
-    ]
+    # แก้ไขให้เหลือเฉพาะแผ่นที่ 1
+    page_labels = ["แผ่นที่ 1 - ต้นฉบับ - ผู้รับน้ำมัน (ปลายทาง)"]
 
     def get_val(key, default=""):
         if data_dict: return str(data_dict.get(key, default))
@@ -302,7 +298,6 @@ if st.button("💾 บันทึกและอัปเดต PDF", type="pri
         curr = inv_df[inv_df[INV_KEY].astype(str).str.startswith(prefix)]
         if curr.empty: return f"{prefix}-0001"
         
-        # ค้นหาค่าสูงสุดจากเลขลำดับ 4 หลักสุดท้าย
         suffixes = curr[INV_KEY].apply(lambda x: int(str(x).split('-')[-1]))
         max_val = suffixes.max()
         return f"{prefix}-{int(max_val)+1:04d}"
@@ -311,23 +306,17 @@ if st.button("💾 บันทึกและอัปเดต PDF", type="pri
     new_data = [final_no, st.session_state.form_date] + [st.session_state[f"in_{f}"] for f in transport_fields]
 
     if st.session_state.editing_no:
-        # --- กรณีแก้ไข: อัปเดตแผ่นงาน Invoices โดยหาแถวเดิม ---
         try:
             cell = ws_inv.find(final_no)
             if cell:
-                # อัปเดตทั้งแถวในตำแหน่งเดิม
                 ws_inv.update(f"A{cell.row}", [new_data])
-            
-            # สำหรับ InvoiceItems จำเป็นต้องลบของเก่าเลขเดิมออกก่อนเพื่อรองรับจำนวนรายการที่เปลี่ยนไป
             found_items = ws_item.findall(final_no)
             for cell_it in reversed(found_items):
                 ws_item.delete_rows(cell_it.row)
         except: pass
     else:
-        # --- กรณีสร้างใหม่: เพิ่มแถวต่อท้ายปกติ ---
         ws_inv.append_row(new_data)
 
-    # เพิ่มรายการสินค้าใหม่เสมอ (ทั้งกรณีสร้างใหม่และแก้ไข)
     for it in st.session_state.invoice_items:
         ws_item.append_row([final_no, it['product'], it['unit'], it['qty'], it['tank'], it['seal']])
 
