@@ -58,10 +58,10 @@ transport_fields = [
     "ผู้รับผลิตภัณฑ์-ชื่อ", "ผู้รับผลิตภัณฑ์-เลขผู้เสียภาษี", "ผู้รับผลิตภัณฑ์-ที่อยู่", "ผู้รับผลิตภัณฑ์-หมายเลขตั๋ว",
     "ผู้ดำเนินการขนส่ง-ชื่อ", "ผู้ดำเนินการขนส่ง-เลขผู้เสียภาษี", "ผู้ดำเนินการขนส่ง-ที่อยู่", "ผู้ดำเนินการขนส่ง-เบอร์โทร",
     "ผู้ดำเนินการขนส่ง-ประเภทผู้รับจ้าง", "ผู้ดำเนินการขนส่ง-ใบอนุญาต",
-    "ข้อมูลพนักงานขับรถ-ชื่อ", "ข้อมูลพนักงานขับรถ-เลขใบขับขี่", "ข้อมูลพนักงานขับรถ-เบอร์โทร", "ข้อมูลพนักงานขับรถ-ทะเบียนรถ",
+    "ข้อมูลพนักงานขับรถ-ชื่อ", "ข้อมูลพนักงาน ขับรถ-เลขใบขับขี่", "ข้อมูลพนักงานขับรถ-เบอร์โทร", "ข้อมูลพนักงานขับรถ-ทะเบียนรถ",
     "ข้อมูลพนักงานขับรถ-วิธีขนส่ง", "ข้อมูลพนักงานขับรถ-วันออกเดินทาง", "ข้อมูลพนักงานขับรถ-เวลาออกเดินทาง",
     "ข้อมูลพนักงานขับรถ-วันที่ถึงปลายทาง", "ข้อมูลพนักงานขับรถ-เวลาที่ถึงปลายทาง",
-    "การยืนยันและรับสินค้า-ผู้ออกเอกสาร", "การยืนยันและรับสินค้า-พนักงานขับรถ", "การยืนยันและรับสินค้า-ผู้รับสินค้า",
+    "การยืนยันและรับสินค้า-ผู้ออกเอกสาร", "การยืนยันและรับสินค้า-พนักงานขับรถ", "การืนยันและรับสินค้า-ผู้รับสินค้า",
     "ผู้จำหน่าย-ชื่อ", "ผู้จำหน่าย-ที่อยู่", "ผู้จำหน่าย-เลขผู้เสียภาษี", "ผู้จำหน่าย-เบอร์โทร",
     "ผู้จำหน่าย-ชื่อเอกสาร", "ผู้จำหน่าย-อธิบายเพิ่ม"
 ]
@@ -82,13 +82,12 @@ def reset_form_action():
     st.session_state.form_date = datetime.now().strftime("%d/%m/%Y")
     for f in transport_fields: st.session_state[f"in_{f}"] = ""
 
-# ================= 3. PDF GENERATOR (REVISED TO 1 PAGE) =================
+# ================= 3. PDF GENERATOR (1 PAGE FORMAT) =================
 def generate_pdf_file(inv_no, items, data_dict=None):
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     w, h = A4
     
-    # แก้ไขให้เหลือเฉพาะแผ่นที่ 1
     page_labels = ["แผ่นที่ 1 - ต้นฉบับ - ผู้รับน้ำมัน (ปลายทาง)"]
 
     def get_val(key, default=""):
@@ -291,18 +290,24 @@ with tabs[3]:
     st.session_state.form_date = st.text_input("วันที่", value=st.session_state.form_date)
     for f in transport_fields[26:]: st.text_input(f, key=f"in_{f}")
 
+# ================= 5. SAVE & REAL-TIME RUNNING NUMBER =================
 if st.button("💾 บันทึกและอัปเดต PDF", type="primary", use_container_width=True):
-    def get_next_no():
+    # 1. อ่านข้อมูลสดจาก Sheet โดยตรง (No Cache) เพื่อหาเลขถัดไป
+    fresh_inv = ws_inv.get_all_records()
+    fresh_df = pd.DataFrame(fresh_inv)
+
+    def get_next_no_live(df):
         prefix = f"JPN-{datetime.now().year}-{datetime.now().month:02d}"
-        if inv_df.empty: return f"{prefix}-0001"
-        curr = inv_df[inv_df[INV_KEY].astype(str).str.startswith(prefix)]
+        if df.empty: return f"{prefix}-0001"
+        curr = df[df[INV_KEY].astype(str).str.startswith(prefix)]
         if curr.empty: return f"{prefix}-0001"
         
         suffixes = curr[INV_KEY].apply(lambda x: int(str(x).split('-')[-1]))
         max_val = suffixes.max()
         return f"{prefix}-{int(max_val)+1:04d}"
     
-    final_no = st.session_state.editing_no if st.session_state.editing_no else get_next_no()
+    # กำหนดหมายเลขเอกสาร
+    final_no = st.session_state.editing_no if st.session_state.editing_no else get_next_no_live(fresh_df)
     new_data = [final_no, st.session_state.form_date] + [st.session_state[f"in_{f}"] for f in transport_fields]
 
     if st.session_state.editing_no:
@@ -310,6 +315,7 @@ if st.button("💾 บันทึกและอัปเดต PDF", type="pri
             cell = ws_inv.find(final_no)
             if cell:
                 ws_inv.update(f"A{cell.row}", [new_data])
+            # ลบข้อมูลสินค้าเก่าเพื่อเตรียมเขียนใหม่
             found_items = ws_item.findall(final_no)
             for cell_it in reversed(found_items):
                 ws_item.delete_rows(cell_it.row)
@@ -317,12 +323,17 @@ if st.button("💾 บันทึกและอัปเดต PDF", type="pri
     else:
         ws_inv.append_row(new_data)
 
+    # บันทึกรายการสินค้าลง Sheet
     for it in st.session_state.invoice_items:
         ws_item.append_row([final_no, it['product'], it['unit'], it['qty'], it['tank'], it['seal']])
 
+    # อัปเดตไฟล์ PDF ใน Session
     st.session_state.pdf_buffer = generate_pdf_file(final_no, st.session_state.invoice_items)
     st.session_state.editing_no = final_no
-    st.cache_data.clear(); st.rerun()
+    
+    # เคลียร์ Cache และเริ่มการแสดงผลใหม่
+    st.cache_data.clear()
+    st.rerun()
 
 if st.session_state.pdf_buffer:
     st.download_button("📥 ดาวน์โหลด PDF", data=st.session_state.pdf_buffer, file_name=f"Invoice_{st.session_state.editing_no}.pdf", mime="application/pdf", use_container_width=True)
